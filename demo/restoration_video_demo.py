@@ -41,11 +41,8 @@ def parse_args():
         type=int,
         default=None,
         help='maximum sequence length if recurrent framework is used')
-    # parser.add_argument('--device', type=int, default=0, help='CUDA device id')
-    # only 1
-    #parser.add_argument('--batch_size', default=1, type=int, help='batch size')
-    # must float32
-    #parser.add_argument('--precision', default="float32", type=str, help='precision')
+    parser.add_argument('--batch_size', default=1, type=int, help='batch size')
+    parser.add_argument('--precision', default="float32", type=str, help='precision')
     parser.add_argument('--channels_last', default=1, type=int, help='Use NHWC or not')
     parser.add_argument('--jit', action='store_true', default=False, help='enable JIT')
     parser.add_argument('--profile', action='store_true', default=False, help='collect timeline')
@@ -54,6 +51,11 @@ def parse_args():
     parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
     parser.add_argument('--nv_fuser', action='store_true', default=False, help='enable nv fuser')
     args = parser.parse_args()
+
+    # only 1
+    args.batch_size = 1
+    # must float32
+    args.precision == "float32"
     print(args)
     return args
 
