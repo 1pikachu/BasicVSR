@@ -55,7 +55,7 @@ def parse_args():
     # only 1
     args.batch_size = 1
     # must float32
-    args.precision == "float32"
+    args.precision = "float32"
     print(args)
     return args
 
