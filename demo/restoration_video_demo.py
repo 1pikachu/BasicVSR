@@ -1,6 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import argparse
 import os
+import time
 
 import cv2
 import mmcv
@@ -15,12 +16,12 @@ VIDEO_EXTENSIONS = ('.mp4', '.mov')
 
 
 def parse_args():
-    modify_args()
+    # modify_args()
     parser = argparse.ArgumentParser(description='Restoration demo')
-    parser.add_argument('config', help='test config file path')
-    parser.add_argument('checkpoint', help='checkpoint file')
-    parser.add_argument('input_dir', help='directory of the input video')
-    parser.add_argument('output_dir', help='directory of the output video')
+    parser.add_argument('--config', default="configs/basicvsr_plusplus_reds4.py", help='test config file path')
+    parser.add_argument('--checkpoint', default="/home2/pytorch-broad-models/BasicVSR/basicvsr_plusplus_c64n7_8x1_600k_reds4_20210217-db622b2f.pth", help='checkpoint file')
+    parser.add_argument('--input_dir', default="/home2/pytorch-broad-models/BasicVSR/_2ynx9GQIsA_000001_000011.mp4", help='directory of the input video')
+    parser.add_argument('--output_dir', default="results/demo_000", help='directory of the output video')
     parser.add_argument(
         '--start-idx',
         type=int,
@@ -40,10 +41,47 @@ def parse_args():
         type=int,
         default=None,
         help='maximum sequence length if recurrent framework is used')
-    parser.add_argument('--device', type=int, default=0, help='CUDA device id')
+    # parser.add_argument('--device', type=int, default=0, help='CUDA device id')
+    # only 1
+    #parser.add_argument('--batch_size', default=1, type=int, help='batch size')
+    # must float32
+    #parser.add_argument('--precision', default="float32", type=str, help='precision')
+    parser.add_argument('--channels_last', default=1, type=int, help='Use NHWC or not')
+    parser.add_argument('--jit', action='store_true', default=False, help='enable JIT')
+    parser.add_argument('--profile', action='store_true', default=False, help='collect timeline')
+    parser.add_argument('--num_iter', default=200, type=int, help='test iterations')
+    parser.add_argument('--num_warmup', default=20, type=int, help='test warmup')
+    parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
+    parser.add_argument('--nv_fuser', action='store_true', default=False, help='enable nv fuser')
     args = parser.parse_args()
+    print(args)
     return args
 
+def inference(args):
+    if args.nv_fuser:
+       fuser_mode = "fuser2"
+    else:
+       fuser_mode = "none"
+    print("---- fuser mode:", fuser_mode)
+
+    total_time = 0.0
+    total_sample = 0
+
+    for i in range(args.num_iter + args.num_warmup):
+        elapsed = time.time()
+        output = restoration_video_inference(args, args.model, args.input_dir,
+                                             args.window_size, args.start_idx,
+                                             args.filename_tmpl, args.max_seq_len, i)
+        elapsed = time.time() - elapsed
+        print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+        if i >= args.num_warmup:
+            total_sample += args.batch_size
+            total_time += elapsed
+
+    latency = total_time / total_sample * 1000
+    throughput = total_sample / total_time
+    print("inference Latency: {} ms".format(latency))
+    print("inference Throughput: {} samples/s".format(throughput))
 
 def main():
     """ Demo for video restoration models.
@@ -56,13 +94,45 @@ def main():
 
     args = parse_args()
 
-    model = init_model(
-        args.config, args.checkpoint, device=torch.device('cuda', args.device))
+    if args.device == "xpu":
+        import intel_extension_for_pytorch
+    elif args.device == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = False
 
-    output = restoration_video_inference(model, args.input_dir,
-                                         args.window_size, args.start_idx,
-                                         args.filename_tmpl, args.max_seq_len)
+    args.model = init_model(
+        args.config, args.checkpoint, device=torch.device(args.device))
 
+    if args.channels_last:
+        try:
+            args.model = args.model.to(memory_format=torch.channels_last)
+            print("---- use NHWC format")
+        except RuntimeError as e:
+            print("---- use normal format")
+            print("fail to enable channels_last=1: ", e)
+
+    # 1iter forward
+    with torch.inference_mode():
+        if args.precision == "float16" and args.device == "cuda":
+            print("---- Use autocast fp16 cuda")
+            with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
+                inference(args)
+        elif args.precision == "float16" and args.device == "xpu":
+            print("---- Use autocast fp16 xpu")
+            with torch.xpu.amp.autocast(enabled=True, dtype=torch.float16, cache_enabled=True):
+                inference(args)
+        elif args.precision == "bfloat16" and args.device == "cpu":
+            print("---- Use autocast bf16 cpu")
+            with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                inference(args)
+        elif args.precision == "bfloat16" and args.device == "xpu":
+            print("---- Use autocast bf16 xpu")
+            with torch.xpu.amp.autocast(dtype=torch.bfloat16):
+                inference(args)
+        else:
+            print("---- no autocast")
+            inference(args)
+
+    """ disable
     file_extension = os.path.splitext(args.output_dir)[1]
     if file_extension in VIDEO_EXTENSIONS:  # save as video
         h, w = output.shape[-2:]
@@ -80,6 +150,7 @@ def main():
             save_path_i = f'{args.output_dir}/{args.filename_tmpl.format(i)}'
 
             mmcv.imwrite(output_i, save_path_i)
+    """
 
 
 if __name__ == '__main__':

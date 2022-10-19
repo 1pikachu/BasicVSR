@@ -25,12 +25,12 @@ def pad_sequence(data, window_size):
     return data
 
 
-def restoration_video_inference(model,
+def restoration_video_inference(args, model,
                                 img_dir,
                                 window_size,
                                 start_idx,
                                 filename_tmpl,
-                                max_seq_len=None):
+                                max_seq_len=None, iter_count=0):
     """Inference image with the model.
 
     Args:
@@ -116,6 +116,17 @@ def restoration_video_inference(model,
             result = torch.stack(result, dim=1)
         else:  # recurrent framework
             if max_seq_len is None:
+                data = data.to(device)
+                if args.channels_last:
+                    data = data.to(memory_format=torch.channels_last) if len(data.shape) == 4 else data
+                if args.jit and iter_count == 0:
+                    try:
+                        model = torch.jit.trace(model, data, check_trace=False, strict=False)
+                        print("---- JIT trace enable.")
+                    except (RuntimeError, TypeError) as e:
+                        print("---- JIT trace disable.")
+                        print("failed to use PyTorch jit mode due to: ", e)
+
                 result = model(
                     lq=data.to(device), test_mode=True)['output'].cpu()
             else:
