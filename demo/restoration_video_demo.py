@@ -213,12 +213,15 @@ def main():
             print("fail to enable channels_last=1: ", e)
 
     # 1iter forward
-    with torch.inference_mode():
+    with torch.no_grad():
         if args.precision == "float16" and args.device == "cuda":
             print("---- Use autocast fp16 cuda")
             with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
                 inference(args)
         elif args.precision == "float16" and args.device == "xpu":
+            # optimize
+            model = torch.xpu.optimize(model=model, dtype=torch.float16)
+            print("---- xpu optimize")
             print("---- Use autocast fp16 xpu")
             with torch.xpu.amp.autocast(enabled=True, dtype=torch.float16, cache_enabled=True):
                 inference(args)
