@@ -9,7 +9,7 @@ function main {
     set_environment
 
     # requirements
-    pip uninstall numpy -y
+    pip install numpy==1.22.4
     if [ ${device} == "cuda" ];then
     	pip install mmcv-full==1.6.0
     else
