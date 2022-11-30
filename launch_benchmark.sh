@@ -9,12 +9,8 @@ function main {
     set_environment
 
     # requirements
-    pip install numpy==1.22.4
-    if [ ${device} == "cuda" ];then
-    	pip install mmcv-full==1.6.0
-    else
-    	pip install mmcv-full==1.3.13
-    fi
+    pip install mmcv-full==1.6.0
+    # pip install mmcv-full==1.3.13  # for ipex with torch1.10
     python setup.py develop
 
     # if multiple use 'xxx,xxx,xxx'
