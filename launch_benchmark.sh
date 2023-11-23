@@ -9,7 +9,7 @@ function main {
     set_environment
 
     # requirements
-    pip install mmcv-full==1.6.0
+    pip install mmcv-full==1.6.0 --no-deps
     # pip install mmcv-full==1.3.13  # for ipex with torch1.10
     python setup.py develop
 
